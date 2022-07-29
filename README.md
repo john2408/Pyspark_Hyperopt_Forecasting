@@ -13,4 +13,28 @@ This docker stack allows to train forecasting models using any Machine Learning 
 
 Model training and management is done via **mlflow**. 
 
-In order to reproduce the results
+In order to reproduce the results initialize docker. If using WSL2:
+
+```bat
+sudo /etc/init.d/docker start
+```
+
+If using Linux based distributed System: 
+
+```bat
+sudo docker start
+```
+Then, create image from Docker file: 
+
+```bat
+sudo docker build -t sparkforecast:v1 .
+```
+
+Run interactive Jupyter Lab session from Docker Image: 
+
+
+```bat
+sudo docker run -it --rm -p 8888:8888 -v "${PWD}":/home/jovyan/work sparkforecast:v1
+```
+
+
