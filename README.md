@@ -1,4 +1,7 @@
-# Jupyter Notebook Python, Spark Stack
+# Docker Containerized Jupyter Notebook 
+
+## Hyperparameter Optimization using parralle model training in Spark
+
 
 [![docker pulls](https://img.shields.io/docker/pulls/jupyter/pyspark-notebook.svg)](https://hub.docker.com/r/jupyter/pyspark-notebook/)
 [![docker stars](https://img.shields.io/docker/stars/jupyter/pyspark-notebook.svg)](https://hub.docker.com/r/jupyter/pyspark-notebook/)
@@ -6,7 +9,9 @@
 
 GitHub Actions in the <https://github.com/jupyter/docker-stacks> project builds and pushes this image to Docker Hub.
 
-Please visit the project documentation site for help to use and contribute to this image and others.
+This docker stack allows to train forecasting models using any Machine Learning (sklearn based) or Statistical Model with the help of **pypspark**. Moreover, hyperparameter optimization via the package **hyperopt** is also available. 
+
+Model training and management is done via **mlflow**. 
 
 - [Jupyter Docker Stacks on ReadTheDocs](https://jupyter-docker-stacks.readthedocs.io/en/latest/index.html)
 - [Selecting an Image :: Core Stacks :: jupyter/pyspark-notebook](https://jupyter-docker-stacks.readthedocs.io/en/latest/using/selecting.html#jupyter-pyspark-notebook)
