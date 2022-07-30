@@ -39,4 +39,6 @@ Run interactive Jupyter Lab session from Docker Image:
 sudo docker run -it --rm -p 8888:8888 -v "${PWD}":/home/jovyan/work sparkforecast:v1
 ```
 
+<img src="img/Univariate_training_chart.png" alt="alt text" title="image Title" height="400"/>
+
 
