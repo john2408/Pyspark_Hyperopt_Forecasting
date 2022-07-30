@@ -11,6 +11,8 @@ GitHub Actions in the <https://github.com/jupyter/docker-stacks> project builds 
 
 This docker stack allows to train forecasting models using any Machine Learning (sklearn based) or Statistical Model with the help of **pypspark**. Moreover, hyperparameter optimization via the package **hyperopt** is also available. 
 
+Currently **RandomForestRegression** and **XGBRegressor** can be used to train models using temporal cross validation and then make inferences based on the best model. 
+
 Model training and management is done via **mlflow**. 
 
 In order to reproduce the results initialize docker. If using WSL2:

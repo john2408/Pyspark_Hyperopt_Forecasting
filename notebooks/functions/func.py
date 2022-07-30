@@ -163,6 +163,109 @@ def fit_models_config(feature_cols, label_col, model, search_space, days_to_fore
     return fit_models
 
 
+def fit_multiple_models(feature_cols, 
+                        label_col, 
+                        models, 
+                        search_space, 
+                        days_to_forecast, 
+                      experiment_name=None, scoring='smape', 
+                      cv=3, max_evals=100, 
+                      bjective=config_objective, 
+                      fit_best=True, ts=True):
+  
+    """Apply a scikit learn model to a group of data within a Spark DataFrame using a Pandas UDF
+
+    Arguments:
+    features_cols: List[str]:       List of column names that represent the model features
+    label_col: str:                 Column to be predicted
+    models: regressor :             List of models to fit the timeseries
+    search_space: Dict:             Grid search data structure containing the parameters to search
+    days_to_forecast: int:          Number of days to forecast
+    experiment_location: str:       Name of MLFlow experiment.If None, create a notebook experiment  
+    scoring: str:                   Scoring method to use for validation
+    cv: int:                        The number of cross validation folds 
+    max_evals: int:                 Max Hyperopt evaluations to run
+    objective: function:            The Hyperopt objective function
+    fit_best: boolean:              If True, a model with the best parameters will be fit and logged in MLFlow
+    ts: boolean:                    If True, the cross validation is a timeseries cross validation     
+    """
+    SEED = 123
+    
+    if ts:
+        cv = TimeSeriesSplit(n_splits=cv,test_size=days_to_forecast)
+    if scoring == 'smape':
+        scoring = make_scorer(symm_mean_absolute_percentage_error, greater_is_better=False)   # neg_smape as scoring    
+        
+    def fit_models(keys, data: pd.DataFrame) -> None:
+        """Fit the model; log the best model and its paramenters to 
+        MLFlow"""
+
+        # identify time series to forecast
+        Key1_id = keys[0]
+        Key2_id = keys[1]
+        group_name = '{}_{}'.format(Key1_id,Key2_id)
+        train_data = data
+        train_data.sort_values(by='ds',inplace=True) #train_data.reset_index(drop=True, inplace=True)
+            
+        if experiment_name is not None:
+            mlflow.set_experiment(experiment_name)
+            # Enable getting Experiment Details later by experiment = mlflow.get_experiment_by_name(experiment_name) 
+        
+        for model in models:
+            
+            with mlflow.start_run() as run:
+
+                # Configure and apply Hyperopt
+                bayes_trials = Trials()
+                objective_config = config_objective(train_data, feature_cols, 
+                                                    label_col, model, scoring=scoring, cv=cv)
+
+                best_params = fmin(
+                    fn=objective_config, 
+                    space=search_space, 
+                    algo=tpe.suggest,
+                    max_evals=max_evals, 
+                    trials=bayes_trials, 
+                    rstate=np.random.default_rng(SEED))
+
+                best_model_score = np.round(bayes_trials.best_trial['result']['loss'], 4)
+
+                # Create model results output dataset
+                model_results_df = pd.DataFrame([(group_name, best_model_score)], 
+                                                columns= ['node', 'best_model_score'])
+
+                # Log best model parameters and statistics to MLFlow
+                mlflow.set_tag("ts_key", group_name)
+
+                mlflow.set_tag("model_type", model.__name__)
+
+                mlflow.log_metric("smape", best_model_score)
+
+                mlflow.log_params(best_params)
+
+                # Fit the best model on the full training dataset for the group
+                if fit_best:
+
+                    # Configure and fit best model
+                    #best_params_as_int = {param_name: int(value) for param_name, value in best_params.items()}
+                    best_params['n_estimators'] = int(best_params['n_estimators'])
+                    best_params['max_depth'] = int(best_params['max_depth'])
+                    
+                    # best_params['min_samples_split'] = int(best_params['min_samples_split'])
+                    # best_params['min_samples_leaf'] = int(best_params['min_samples_leaf'])
+                    
+                    best_model_conf = model(**best_params)
+                    best_model_conf.fit(train_data[feature_cols], train_data[label_col])
+
+                    # Log the best model to MLFlow
+                    mlflow.sklearn.log_model(sk_model=best_model_conf, 
+                                              artifact_path='tuned_model')
+
+        return model_results_df
+
+    return fit_models
+
+
 def apply_models_config(features_cols, score="smape", experiment_id=None):
   
     """For each distinct group (values in groupBy statement), load the group's best model and 
@@ -281,6 +384,7 @@ def load_model(key1_id, key2_id, experiment_id, group_name):
     best_run_df = mlflow.search_runs(experiment_id, filter_string=query,order_by=["metrics.smape"],max_results=1)
 
     best_model_run_id = best_run_df.run_id.values[0]
+    
 
     # Load the best model via its run_id
     model_loc = os.path.join(os.getcwd(), f"mlruns/{experiment_id}/{best_model_run_id}/artifacts/tuned_model")
@@ -289,7 +393,7 @@ def load_model(key1_id, key2_id, experiment_id, group_name):
     
     return model, best_run_df, model_cv_smape
 
-def plot_forecast(forecast_pd, model_cv_smape, last_train_date, model, group_name ):
+def plot_forecast(forecast_pd, model_cv_smape, last_train_date, model, group_name, best_model_name ):
     """
     Forecast Plot with intervals. 
     """
@@ -304,7 +408,8 @@ def plot_forecast(forecast_pd, model_cv_smape, last_train_date, model, group_nam
 
     predict_fig = generate_plot(model, forecast_pd, xlabel='date', ylabel='inflow')
     plt.plot(test['ds'], test['y'], label='actual', c='#249156')
-    plt.title('Validation data v. forecast of {} with smape(avg on fh) cv:{:.4f} vs. test:{:.4f}'.format(group_name, model_cv_smape, test_smape))
+    plt.title('Best Model : {} - Validation data v. forecast of {} with smape(avg on fh) cv:{:.4f} vs. test:{:.4f}' \
+              .format(best_model_name, group_name, model_cv_smape, test_smape))
     plt.legend();
 
     # adjust the x-axis to focus on a limited date range

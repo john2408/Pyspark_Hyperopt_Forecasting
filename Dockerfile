@@ -66,6 +66,7 @@ USER ${NB_UID}
 RUN mamba install --quiet --yes \
     'hyperopt' \
     'mlflow' \
+    'xgboost' \
     'pyarrow' && \
     mamba clean --all -f -y && \
     fix-permissions "${CONDA_DIR}" && \
