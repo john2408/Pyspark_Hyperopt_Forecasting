@@ -24,19 +24,19 @@ sudo /etc/init.d/docker start
 If using Linux based distributed System: 
 
 ```bat
-sudo docker start
+sudo systemctl start docker
 ```
 Then, create image from Docker file: 
 
 ```bat
-sudo docker build -t sparkforecast:v1 .
+sudo docker build -t pysparkforecast:latest .
 ```
 
 Run interactive Jupyter Lab session from Docker Image: 
 
 
 ```bat
-sudo docker run -it --rm -p 8888:8888 -v "${PWD}":/home/jovyan/work sparkforecast:v1
+sudo docker run -it --rm -p 8888:8888 -v "${PWD}":/home/jovyan/work pysparkforecast:latest
 ```
 
 <img src="img/Univariate_training_chart.png" alt="alt text" title="image Title" height="400"/>
