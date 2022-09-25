@@ -67,11 +67,12 @@ RUN mamba install --quiet --yes \
     'hyperopt' \
     'mlflow' \
     'xgboost' \
-    'pyarrow' && \
+    'pyarrow'  &&\
     mamba clean --all -f -y && \
     fix-permissions "${CONDA_DIR}" && \
     fix-permissions "/home/${NB_USER}"
 
+RUN pip install "sktime[all_extras]"
 
 # COPY . "/opt/app"
 # WORKDIR "/opt/app"

@@ -18,6 +18,11 @@ from hyperopt import fmin, tpe, hp, Trials, STATUS_OK, SparkTrials
 from hyperopt.pyll.stochastic import sample
 from hyperopt.pyll.base import scope
 
+
+from sktime.forecasting.model_evaluation import evaluate
+from sktime.forecasting.model_selection import ExpandingWindowSplitter
+from sktime.forecasting.model_selection import temporal_train_test_split
+
 import os
 
 def symm_mean_absolute_percentage_error(y_true, y_pred, sample_weight=None):
@@ -68,6 +73,44 @@ def config_objective(df, feature_cols, label_col, model, scoring, cv):
 
     return objective
 
+def config_objective_v2(df, feature_cols, label_col, model, scoring, cv):
+  
+    """Configure the Hyperopt objective function
+
+    Arguments:
+    df: Pandas DataFrame:     The Pandas Dataframe on which to fit the model
+    features_cols: List[str]: List of column names that represent the model features
+    label_col: str            The label column name
+    model: regressor          The model object that will be fit on the data, for instance a random forest
+    scoring: str, scorer func Scoring method to use for selecting the best model
+    cv: int, cv generator     The number of cross validation folds or cv generator
+    """
+
+    def objective(params):
+
+        """The Hyperopt objective function"""
+        
+        if model.__name__ not in ['XGBRegressor','RandomForestRegressor']:
+            
+            y = df.reset_index(drop=True)[label_col].copy()
+
+            forecaster = model(**params)
+
+            scores = evaluate(forecaster=forecaster, y=y, cv=cv)
+            loss = -scores['test_MeanAbsolutePercentageError'].mean()    # neg score as loss
+            
+        else:
+            
+            model_conf = model(**params)
+
+            scores = cross_val_score(model_conf, df[feature_cols], df[label_col], scoring=scoring, cv=cv)
+            loss = -scores.mean()     # neg score as loss
+
+
+        return {'loss': loss, 'params': params, 'status': STATUS_OK}  
+
+    return objective
+
 def fit_models_config(feature_cols, label_col, model, search_space, days_to_forecast, 
                       experiment_name=None, scoring='smape', 
                       cv=3, max_evals=100, 
@@ -92,8 +135,8 @@ def fit_models_config(feature_cols, label_col, model, search_space, days_to_fore
     """
     SEED = 123
     
-    if ts:
-        cv = TimeSeriesSplit(n_splits=cv,test_size=days_to_forecast)
+    #if ts:
+    #    cv = TimeSeriesSplit(n_splits=cv,test_size=days_to_forecast)
     if scoring == 'smape':
         scoring = make_scorer(symm_mean_absolute_percentage_error, greater_is_better=False)   # neg_smape as scoring    
         
@@ -120,12 +163,12 @@ def fit_models_config(feature_cols, label_col, model, search_space, days_to_fore
                                                 label_col, model, scoring=scoring, cv=cv)
 
             best_params = fmin(
-                fn=objective_config, 
-                space=search_space, 
-                algo=tpe.suggest,
-                max_evals=max_evals, 
-                trials=bayes_trials, 
-                rstate=np.random.default_rng(SEED))
+                fn = objective_config, 
+                space = search_space, 
+                algo = tpe.suggest,
+                max_evals = max_evals, 
+                trials = bayes_trials, 
+                rstate = np.random.default_rng(SEED))
 
             best_model_score = np.round(bayes_trials.best_trial['result']['loss'], 4)
 
@@ -167,11 +210,14 @@ def fit_multiple_models(feature_cols,
                         label_col, 
                         models, 
                         search_space, 
-                        days_to_forecast, 
-                      experiment_name=None, scoring='smape', 
-                      cv=3, max_evals=100, 
-                      bjective=config_objective, 
-                      fit_best=True, ts=True):
+                        days_to_forecast,
+                        cv_objects,
+                        experiment_name=None, 
+                        scoring='smape',
+                        max_evals=100, 
+                        config_objective=config_objective_v2, 
+                        fit_best=True, 
+                        ts=True):
   
     """Apply a scikit learn model to a group of data within a Spark DataFrame using a Pandas UDF
 
@@ -191,8 +237,6 @@ def fit_multiple_models(feature_cols,
     """
     SEED = 123
     
-    if ts:
-        cv = TimeSeriesSplit(n_splits=cv,test_size=days_to_forecast)
     if scoring == 'smape':
         scoring = make_scorer(symm_mean_absolute_percentage_error, greater_is_better=False)   # neg_smape as scoring    
         
@@ -213,6 +257,14 @@ def fit_multiple_models(feature_cols,
         
         for model in models:
             
+            if model.__name__ in ['XGBRegressor','RandomForestRegressor']:
+                search_params = search_space['tree_algo']
+                cv = cv_objects['tree_algo']
+            else:
+                search_params = search_space['ts_algo']
+                cv = cv_objects['ts_algo']
+                
+            
             with mlflow.start_run() as run:
 
                 # Configure and apply Hyperopt
@@ -222,7 +274,7 @@ def fit_multiple_models(feature_cols,
 
                 best_params = fmin(
                     fn=objective_config, 
-                    space=search_space, 
+                    space=search_params, 
                     algo=tpe.suggest,
                     max_evals=max_evals, 
                     trials=bayes_trials, 
