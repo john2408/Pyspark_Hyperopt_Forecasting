@@ -73,6 +73,7 @@ RUN mamba install --quiet --yes \
     fix-permissions "/home/${NB_USER}"
 
 RUN pip install "sktime[all_extras]"
+RUN pip install keras-tcn
 
 # COPY . "/opt/app"
 # WORKDIR "/opt/app"
